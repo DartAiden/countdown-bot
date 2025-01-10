@@ -33,7 +33,7 @@ class game():
     class letterbuttons(discord.ui.View):
         def __init__(self, user, word, vowelstatus, consonantstatus, submitstatus, vowelcounter, consonantcounter,round_complete, parent):
             super().__init__() 
-            self.timeout = timeout
+            self.timeout = 20
             self.word = word
             self.user = user
             self.consonantstatus = consonantstatus
@@ -48,7 +48,6 @@ class game():
             self.submitted = False
             self.submit_event = asyncio.Event()
             self.parent = parent
-            timeout = 30
         def setmessage(self,message):
             self.message = message
 
@@ -69,7 +68,7 @@ class game():
             else:
                 self.consonantstatus = False
             self.word = await self.vowelappend(self.word)
-            await interaction.response.edit_message(view = game.letterbuttons(self.user, self.word, self.vowelstatus, self.consonantstatus, self.submitstatus, self.vowelcounter, self.consonantcounter, self.round_complete, self.parent, self.mems), content=f"<@{self.user.id}>! Please choose a consonant or a vowel. Your word is: {(self.word)}")
+            await interaction.response.edit_message(view = game.letterbuttons(self.user, self.word, self.vowelstatus, self.consonantstatus, self.submitstatus, self.vowelcounter, self.consonantcounter, self.round_complete, self.parent), content=f"<@{self.user.id}>! Please choose a consonant or a vowel. Your word is: {(self.word)}")
         @discord.ui.button(label="Consonant", style=discord.ButtonStyle.primary, row = 0)
         async def consanant_callback(self, button, interaction):
             self.consonantcounter +=1
@@ -86,7 +85,7 @@ class game():
             else:
                 self.vowelstatus = False
             self.word = await self.consonantappend(self.word)
-            await interaction.response.edit_message(view = game.letterbuttons(self.user, self.word, self.vowelstatus, self.consonantstatus, self.submitstatus, self.vowelcounter, self.consonantcounter, self.round_complete, self.parent, self.mems), content=f"<@{self.user.id}>! Please choose a consonant or a vowel. Your word is: {(self.word)}")
+            await interaction.response.edit_message(view = game.letterbuttons(self.user, self.word, self.vowelstatus, self.consonantstatus, self.submitstatus, self.vowelcounter, self.consonantcounter, self.round_complete, self.parent), content=f"<@{self.user.id}>! Please choose a consonant or a vowel. Your word is: {(self.word)}")
         @discord.ui.button(label="Submit", style=discord.ButtonStyle.primary, row = 0, disabled = True)
         async def submit_callback(self, button, interaction):
                 self.submitstatus= True
@@ -94,7 +93,7 @@ class game():
                 self.consonantstatus = True
                 self.submitted = True
                 self.submit_event.set()
-                await interaction.response.edit_message(view = game.letterbuttons(self.user, self.word, self.vowelstatus, self.consonantstatus, self.submitstatus, self.vowelcounter, self.consonantcounter, self.round_complete, self.parent, self.mems), content=f"<@{self.user.id}>! Please choose a consonant or a vowel. Your word is: {(self.word)}")
+                await interaction.response.edit_message(view = game.letterbuttons(self.user, self.word, self.vowelstatus, self.consonantstatus, self.submitstatus, self.vowelcounter, self.consonantcounter, self.round_complete, self.parent), content=f"<@{self.user.id}>! Please choose a consonant or a vowel. Your word is: {(self.word)}")
                 await self.continueletters(self.parent, self.word, self.round_complete)
         async def on_timeout(self):
             self.vowel_callback.disabled = True
@@ -240,10 +239,11 @@ class game():
         def check(message):
             checker = (message.author == dmer and message.channel == dmer.dm_channel)
             return checker
-        timer = time.time()
         try:
-            while time.time() - timer < 30:
-                message = await bot.wait_for("message", timeout=30.0, check=check)
+            end = time.time() + 30
+            while time.time() < end:
+                remaining = end - time.time() 
+                message = await bot.wait_for("message", timeout=remaining, check=check)
                 attempt = (message.content).upper()
                 if attempt in guesslist:
                     if len(attempt) >= minlength:
@@ -335,6 +335,7 @@ class game():
             await numberround_complete.wait()
 
     async def numbers(self, round, roster, numberround_complete, parent):
+
         class rootnum():
             def __init__(self, num, index):
                 self.val = num
@@ -362,21 +363,39 @@ class game():
                         await user.send("Invalid guess.")
             except asyncio.TimeoutError:
                 if received == False:
-                    user.send("Time's up! Picking numbers randomly...")
+                    await user.send("Time's up! Picking numbers randomly...")
                     numlist = parent.numslist(random.randrange(0,4))
+            self.received = {player: False for player in self.roster}
+
+            self.all_submit = asyncio.Event()
+            waiter = asyncio.create_task(self.all_submit.wait())  
+
             for user in roster:
+
                 target = random.randrange(1,1000)
                 rootlist = []
+                event = asyncio.Event()
                 for i in range(len(numlist)):
                     newnum = rootnum(numlist[i], i)
                     rootlist.append(newnum)
-                await user.send(f"Alright! The numbers are {numlist[0]}, {numlist[1]}, {numlist[2]}, {numlist[3]}, {numlist[4]}, and {numlist[5]}. You have 40 seconds. The target number is **{target}**. Once you submit an answer, you cannot change it.", view = parent.numbuttons(user, rootlist, target, [],[], time.time() + 40, [], parent, [-.5, -.5, -.5, -.5]))
-        
+                await user.send(f"Alright! The numbers are {numlist[0]}, {numlist[1]}, {numlist[2]}, {numlist[3]}, {numlist[4]}, and {numlist[5]}. You have 40 seconds. The target number is **{target}**. Once you submit an answer, you cannot change it.", view = parent.numbuttons(user, rootlist, target, [],[], time.time() + 40, [], parent, [-.5, -.5, -.5, -.5],False))
+            timer1 = asyncio.create_task(asyncio.sleep(40))
+
+            done, pending = await asyncio.wait(
+                [self.all_submit, timer1],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            print("complete")
+    def checkall(self, user):
+        self.received[user] = True
+        print("checked")
+        if all(self.received.values()): 
+            self.all_submit.set()
+
 
 
     def numslist(self, num):
         def randchooser(list):
-            print(list)
             item = list[random.randrange(0,len(list))]
             list.remove(item)
             finallist.append(item)
@@ -436,13 +455,12 @@ class game():
                 self.children = children
             def toString(self):
                 lister = []
-                print(self.equations, "equation")
                 for n in self.equations:
                     lister.append(n.toString())
                 return '\n'.join(lister)
         
 
-        def __init__(self, user, nums, target, memo, current, timer, indices, parent, mems):
+        def __init__(self, user, nums, target, memo, current, timer, indices, parent, mems, submit):
             super().__init__()
             self.user = user
             self.nums = nums
@@ -454,7 +472,7 @@ class game():
             self.target = target
             self.mems = mems
             self.timer = timer
-            print(self.indices)
+            self.submit = submit
 
             self.button1_callback.label = nums[0].val
             self.button2_callback.label = nums[1].val
@@ -625,9 +643,7 @@ class game():
                     self.mem4_callback.disabled = True
                 else:
                     self.mem4_callback.disabled = False  
-
-        async def on_timeout(self):
-            if self.user.numberguess == -5:
+        async def submitter(self):
                 self.button1_callback.disabled = True
                 self.button2_callback.disabled = True
                 self.button3_callback.disabled = True
@@ -644,7 +660,15 @@ class game():
                 self.clear2_callback.disabled = True
                 self.clear3_callback.disabled = True
                 self.clear4_callback.disabled = True
+                self.submit = True
+                self.parent.checkall(self.user)
+                self.parent.scoreboards[self.user].setnumberguess(self.user)
+                await self.message.edit(view = self)
+
+        async def main_on_timeout(self):
+            if self.user.numberguess == -5:
                 await self.user.send("Time's up! Setting last entered number as guess...")
+                await self.submitter()
                 if len(self.current > 0):
                     self.user.numberguess = self.current[0]
                 await self.message.edit(view = self)
@@ -653,51 +677,51 @@ class game():
         async def button1_callback(self, button, interaction):
             self.load(self.nums[0])
             self.indices.append(0)
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
         @discord.ui.button(label="button2", style=discord.ButtonStyle.primary, row = 0, disabled = False)
         async def button2_callback(self, button, interaction):
             self.load(self.nums[1])
             self.indices.append(1)
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
         @discord.ui.button(label="button3", style=discord.ButtonStyle.primary, row = 0, disabled = False)
         async def button3_callback(self, button, interaction):
             self.load(self.nums[2])
             self.indices.append(2)
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
         @discord.ui.button(label="button4", style=discord.ButtonStyle.primary, row = 1, disabled = False)
         async def button4_callback(self, button, interaction):
             self.load(self.nums[3])
             self.indices.append(3)
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
         @discord.ui.button(label="button5", style=discord.ButtonStyle.primary, row = 1, disabled = False)
         async def button5_callback(self, button, interaction):
             self.load(self.nums[4])
             self.indices.append(4)
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
         @discord.ui.button(label="button6", style=discord.ButtonStyle.primary, row = 1, disabled = False)
         async def button6_callback(self, button, interaction):
             self.load(self.nums[5])
             self.indices.append(5)
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
         @discord.ui.button(label="+", style=discord.ButtonStyle.primary, row = 0, disabled = True)
         async def add_callback(self, button, interaction):
             self.load(1)
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
         @discord.ui.button(label="-", style=discord.ButtonStyle.primary, row = 0, disabled = True)
         async def subtract_callback(self, button, interaction):
             self.load(2)
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
         @discord.ui.button(label="*", style=discord.ButtonStyle.primary, row = 1, disabled = True)
         async def multiply_callback(self, button, interaction):
             self.load(3)
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
         @discord.ui.button(label="/", style=discord.ButtonStyle.primary, row = 1, disabled = True)
         async def divide_callback(self, button, interaction):
             self.load(4)
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
         @discord.ui.button(label="Submit", style=discord.ButtonStyle.primary, row = 2, disabled = True)
         async def submit_callback(self, button, interaction):
-            self.user.setnumberguess(self.current[0])
+            self.parent.scoreboards[self.user].setnumberguess(self.user)
             self.ops = {1: "+",
                         2: "-",
                         3: "*",
@@ -718,68 +742,53 @@ class game():
                 if len(self.current) == 2:
                     temps+= str(self.ops[self.current[1]])
                 temp.append(temps)
-            self.user.setnumbersolution('\n'.join(temp))   
-            self.button1_callback.disabled = True
-            self.button2_callback.disabled = True
-            self.button3_callback.disabled = True
-            self.button4_callback.disabled = True
-            self.button5_callback.disabled = True
-            self.button6_callback.disabled = True
-            self.add_callback.disabled = True
-            self.subtract_callback.disabled = True
-            self.multiply_callback.disabled = True
-            self.divide_callback.disabled = True
-            self.delete_callback.disabled = True
-            self.submit_callback.disabled = True
-            self.clear1_callback.disabled = True
-            self.clear2_callback.disabled = True
-            self.clear3_callback.disabled = True
-            self.clear4_callback.disabled = True
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+                self.parent.scoreboards[self.user].setnumbersolution('\n'.join(temp))   
+            await self.submitter()
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
         @discord.ui.button(label="Delete", style=discord.ButtonStyle.primary, row = 2, disabled = True)
 
         async def delete_callback(self, button, interaction):
             self.deleter()
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
 
         @discord.ui.button(label = "Mem1", style = discord.ButtonStyle.primary, row = 3, disabled = True)
         async def mem1_callback(self, button, interaction):
             self.addmem(0)
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
         @discord.ui.button(label = "Mem2", style = discord.ButtonStyle.primary, row = 3, disabled = True)
 
         async def mem2_callback(self, button, interaction):
             self.addmem(1)
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
         @discord.ui.button(label = "Mem3", style = discord.ButtonStyle.primary, row = 3, disabled = True)
 
         async def mem3_callback(self, button, interaction):
             self.addmem(2)
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
         @discord.ui.button(label = "Mem4", style = discord.ButtonStyle.primary, row = 3, disabled = True)
 
         async def mem4_callback(self, button, interaction):
             self.addmem(3)
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
         @discord.ui.button(label = "Clear 1", style = discord.ButtonStyle.primary, row = 4, disabled = True)
         async def clear1_callback(self, button, interaction):
             self.delmem(0)
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
         
         @discord.ui.button(label = "Clear 2", style = discord.ButtonStyle.primary, row = 4, disabled = True)
         async def clear2_callback(self, button, interaction):
             self.delmem(1)
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
 
         @discord.ui.button(label = "Clear 3", style = discord.ButtonStyle.primary, row = 4, disabled = True)
         async def clear3_callback(self, button, interaction):
             self.delmem(2)
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
     
         @discord.ui.button(label = "Clear 4", style = discord.ButtonStyle.primary, row = 4, disabled = True)
         async def clear4_callback(self, button, interaction):
             self.delmem(3)
-            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems))
+            await interaction.response.edit_message(content = str(self.prepmessage()),  view = self.parent.numbuttons(self.user, self.nums, self.target, self.memo, self.current, self.timer, self.indices, self.parent, self.mems, self.submit))
         def load(self, numval):
             self.current.append(numval)
             if len(self.current) == 3:
@@ -812,7 +821,6 @@ class game():
         def delmem(self, ind):
             current = self.mems[ind]
             for i in current.children:
-                print(i)
                 if isinstance(i, list):
                     for j in i:
                         self.indices.remove(j)
@@ -877,6 +885,16 @@ async def help(ctx: discord.ApplicationContext):
 
 @bot.slash_command(name="start", description="start")
 async def start(ctx: discord.ApplicationContext):
+    async def initializegame():
+       # for user in roster:
+        #    await user.send(f"It's time for the letters round. A word must have at least 3 vowels and 4 consonants. A word has a maximum of 9 letters.")
+        newgame = game(roster, ctx)
+        activechannels[ctx.channel] = newgame
+        #await newgame.roundnum(newgame)
+        for user in roster:
+            await user.send("It's time for the numbers round. Please choose how many large numbers you want. The remaining will be small numbers")
+        await newgame.numbernum(newgame)
+
     global activechannels
     if ctx.channel in activechannels:
         await ctx.send("The game is already in progress.")
@@ -908,14 +926,7 @@ The following players have joined:""")
                     else:
                         await ctx.send(f"Starting...")
                         if(len(roster) > 0):
-                            #for user in roster:
-                                #await user.send(f"It's time for the letters round. A word must have at least 3 vowels and 4 consonants. A word has a maximum of 9 letters.")
-                            newgame = game(roster, ctx)
-                            activechannels[ctx.channel] = newgame
-                            #await newgame.roundnum(newgame)
-                            for user in roster:
-                                await user.send("It's time for the numbers round. Please choose how many large numbers you want. The remaining will be small numbers.")
-                            await newgame.numbernum(newgame)
+                            await initializegame()
                             break
         except asyncio.TimeoutError:
             if(len(roster) == 0):
@@ -924,14 +935,7 @@ The following players have joined:""")
             else:
                 await ctx.send(f"Starting...")
                 if(len(roster) > 0):
-                    #for user in roster:
-                        #await user.send(f"It's time for the letters round. A word must have at least 3 vowels and 4 consonants. A word has a maximum of 9 letters.")
-                    newgame = game(roster, ctx)
-                    activechannels[ctx.channel] = newgame
-                    #await newgame.roundnum(newgame)
-                    for user in roster:
-                        await user.send("It's time for the numbers round. Please choose how many large numbers you want. The remaining will be small numbers")
-                    await newgame.numbernum(newgame)
+                   await initializegame()
 
 @bot.event
 async def on_ready():
