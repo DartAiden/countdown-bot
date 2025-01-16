@@ -57,7 +57,9 @@ class game():
         @discord.ui.button(label="Vowel", style=discord.ButtonStyle.primary, row = 0)
         async def vowel_callback(self, button, interaction):
             self.vowelcounter +=1
-            if(self.vowelcounter >= 5 or len(self.word) > 9):
+            self.word = await self.vowelappend(self.word)
+
+            if(self.vowelcounter >= 5 or len(self.word) >= 9):
                 self.vowel_callback.disabled = True
             else:
                 self.vowel_callback.disabled = False
@@ -65,16 +67,17 @@ class game():
                 self.submit_callback.disabled = False
             else:
                 self.submit_callback.disabled = True
-            if(self.consonantcounter >= 6 or len(self.word) > 9 ):
+            if(self.consonantcounter >= 6 or len(self.word) >= 9 ):
                 self.consonant_callback.disabled = True
             else:
                 self.consonant_callback.disabled = False
-            self.word = await self.vowelappend(self.word)
             await interaction.response.edit_message(view = self, content=f"<@{self.user.id}>! Please choose a consonant or a vowel. Your word is: {(self.word)}")
         @discord.ui.button(label="Consonant", style=discord.ButtonStyle.primary, row = 0)
         async def consonant_callback(self, button, interaction):
             self.consonantcounter +=1
-            if(self.consonantcounter >= 6 or len(self.word) > 9 ): #I need to fix this logic
+            self.word = await self.consonantappend(self.word)
+
+            if(self.consonantcounter >= 6 or len(self.word) >= 9 ): #I need to fix this logic
                 self.consonant_callback.disabled = True
             else:
                 self.consonant_callback.disabled = False
@@ -82,11 +85,10 @@ class game():
                 self.submit_callback.disabled= False
             else:
                 self.submit_callback.disabled = True
-            if(self.vowelcounter >= 5 or len(self.word) > 9):
+            if(self.vowelcounter >= 5 or len(self.word) >= 9):
                 self.vowel_callback.disabled = True
             else:
                 self.vowel_callback.disabled = False
-            self.word = await self.consonantappend(self.word)
             await interaction.response.edit_message(view =self, content=f"<@{self.user.id}>! Please choose a consonant or a vowel. Your word is: {(self.word)}")
         @discord.ui.button(label="Submit", style=discord.ButtonStyle.primary, row = 0, disabled = True)
         async def submit_callback(self, button, interaction):
@@ -415,7 +417,7 @@ class game():
             if len(winnerlist) == 1:
                 mess = f"The winner is {winnerlist[0].display_name}, and they earn {earned} points! They have the solution: \n {self.scoreboards[winnerlist[0]].numbersolution}"
             elif len(winnerlist) == 2:
-                mess = f"The winners are {winnerlist[0].display_name} and {winnerlist[1].display_name}, and they earn {earned} poitns! Respectively, they have the solutions: \n {self.scoreboards[winnerlist[0]].numbersolution} \n and: \n {self.scoreboards[winnerlist[1]].numbersolution}"
+                mess = f"The winners are {winnerlist[0].display_name} and {winnerlist[1].display_name}, and they earn {earned} points! Respectively, they have the solutions: \n {self.scoreboards[winnerlist[0]].solution} \n and: \n {self.scoreboards[winnerlist[1]].solution}"
             else:
                 mess = f"Earning {earned} points, the winners are "
                 for i in range(len(winnerlist)-1):
@@ -426,7 +428,6 @@ class game():
             inputlist = []
             for i in numlist:
                 inputlist.append(str(i))
-            print(target)
             inputlist.append(str(target))
             process = subprocess.Popen(['java', 'solvenumbers'] + inputlist, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = process.communicate()
@@ -434,7 +435,7 @@ class game():
             outputlist = output.split('BREAK')
             if len(outputlist)> 10:
                 outputlist = outputlist[:10]
-            newmess = "Some of the other solutions include: "
+            newmess = "Some of the other solutions include: \n"
             for i in outputlist:
                 newmess += i
                 newmess += "\n"
@@ -737,7 +738,7 @@ class game():
                 self.clear2_callback.disabled = True
                 self.clear3_callback.disabled = True
                 self.clear4_callback.disabled = True
-                self.mem1_callback.disbaled = True
+                self.mem1_callback.disabled = True
                 self.mem2_callback.disabled = True
                 self.mem3_callback.disabled = True
                 self.mem4_callback.disabled = True
@@ -960,7 +961,6 @@ class game():
         self.cor = 0
 
         outputs = output.split(",")
-        print(outputs)
         conundrum = outputs[0]
         ans = outputs[1].strip()
         tasklist = []
@@ -1054,11 +1054,11 @@ async def score(ctx: discord.ApplicationContext):
         scorelist.sort(key = lambda it: activechannels[ctx.channel].scoreboards[user].score)
         for user in scorelist:
             username = (user).display_name
-            score = user.getscore()
+            score = activechannels[ctx.channel].scoreboards[user].score
             message = message + f"""{username}: {score} points \n"""
             await ctx.send(message)
 
-
+"""
 @bot.slash_command(name="end", description="end")
 async def end(ctx: discord.ApplicationContext):
     global activechannels
@@ -1068,21 +1068,21 @@ async def end(ctx: discord.ApplicationContext):
         return 0
     else:
         await ctx.send("There is no ongoing game!")
-
+"""
 
 @bot.slash_command(name="help", description="help menu")
 async def help(ctx: discord.ApplicationContext):
-    await ctx.respond("This is a Discord bot to help users play the British game show Countdown. The following ")
+    await ctx.respond("This is a Discord bot to help users play the British game show Countdown. Simply type /start to enter a game. Feel free to message me @ AachenFur to contact me.")
 
 @bot.slash_command(name="start", description="start")
 async def start(ctx: discord.ApplicationContext):
     async def initializegame():
         newgame = game(roster, ctx)
         activechannels[ctx.channel] = newgame
- #       for user in roster:
-#            await user.send(f"It's time for the letters round. A word must have at least 3 vowels and 4 consonants. A word has a maximum of 9 letters.")
+        for user in roster:
+            await user.send(f"It's time for the letters round. A word must have at least 3 vowels and 4 consonants. A word has a maximum of 9 letters.")
 
-        #await newgame.roundnum(newgame)
+        await newgame.roundnum(newgame)
         for user in roster:
             await user.send("It's time for the numbers round. Please choose how many large numbers you want. The remaining will be small numbers")
         await newgame.numbernum(newgame)
@@ -1094,7 +1094,6 @@ async def start(ctx: discord.ApplicationContext):
     if ctx.channel in activechannels:
         await ctx.send("The game is already in progress.")
     else:
-        activechannels[ctx.channel] = True
         timer = time.time()+15
 
         roster = []
@@ -1129,7 +1128,7 @@ The game will start in 20 seconds. The following players have joined:
             await ctx.send("No one joined the game!")
             del activechannels[ctx.channel]
         else:
-            await ctx.send(f"Starting...")
+            await ctx.send(f"Starting... Please make sure the bot can DM you.")
             await initializegame()
 
 
@@ -1139,7 +1138,7 @@ async def on_ready():
     print(f"{bot.user} is ready and online!")
     global activechannels
     activechannels.clear()
-    
+
 dotenv.load_dotenv()
 token = str(os.getenv("TOKEN"))
 bot.run(os.getenv('TOKEN'))
