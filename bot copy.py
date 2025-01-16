@@ -34,7 +34,7 @@ class game():
 
 
     class letterbuttons(discord.ui.View):
-        def __init__(self, user, word, vowelstatus, consonantstatus, submitstatus, vowelcounter, consonantcounter,round_complete, parent,submit):
+        def __init__(self, user, word, vowelstatus, consonantstatus, submitstatus, vowelcounter, consonantcounter, parent,submit):
             super().__init__() 
             self.timeout = 20
             self.word = word
@@ -47,7 +47,6 @@ class game():
             self.vowel_callback.disabled = self.vowel_callback.disabled
             self.consonant_callback.disabled = self.consonant_callback.disabled
             self.submit_callback.disabled = self.submit_callback.disabled
-            self.round_complete = round_complete
             self.submitted = submit
             self.parent = parent
         def setmessage(self,message):
@@ -92,10 +91,11 @@ class game():
             await interaction.response.edit_message(view =self, content=f"<@{self.user.id}>! Please choose a consonant or a vowel. Your word is: {(self.word)}")
         @discord.ui.button(label="Submit", style=discord.ButtonStyle.primary, row = 0, disabled = True)
         async def submit_callback(self, button, interaction):
+                self.submitted = True
+
                 self.submit_callback.disabled= True
                 self.vowel_callback.disabled =  True
                 self.consonant_callback.disabled = True
-                self.submitted = True
                 self.stop()
                 await interaction.response.edit_message(view = self, content=f"<@{self.user.id}>! Please choose a consonant or a vowel. Your word is: {(self.word)}")
                 await self.parent.continueletters(self.word)
@@ -233,14 +233,20 @@ class game():
     async def roundnum(self, game):
         for i in range(5):
             self.round_complete = asyncio.Event()
-            await game.letters(i+ 1, game.roster, self.round_complete)
+            await game.letters(i+ 1, game.roster)
             await self.round_complete.wait()
             
     async def gatherletters(self, user, word, lettertimer, guesslist):
+        async def timerre(time):
+            await asyncio.sleep(time)
+            for user in self.roster:
+                await user.send("10 seconds left...")
         dmer = user
         self.scoreboards[user].setletterguess("")
         await dmer.send(f"Alright! The word is {str(word)}. You have {lettertimer} seconds. Please reply with your guess:")
         minlength = 0
+        asyncio.create_task(timerre(20))
+
         def check(message):
             checker = (message.author == dmer and message.channel == dmer.dm_channel)
             return checker
@@ -249,7 +255,7 @@ class game():
             while time.time() < end:
                 remaining = end - time.time() 
                 message = await bot.wait_for("message", timeout=remaining, check=check)
-                attempt = (message.content).upper()
+                attempt = (message.content).strip().upper()
                 if attempt in guesslist:
                     if len(attempt) >= minlength:
                         self.scoreboards.get(user).setletterguess(attempt)
@@ -262,18 +268,21 @@ class game():
         except asyncio.TimeoutError:
             await dmer.send("Time's up!")
 
-    async def letters(self, round, roster, round_complete):
+
+    async def letters(self, round, roster):
                 for user in roster:
                     await user.send("It's time for letters round " + str(round) + " of 5")
-
+                self.waiterlet = {}
                 for user in roster:
+                        self.current = user
                         word = ""
-                        letterview = game.letterbuttons(user, word, False, False, True,0,0, round_complete, self, False)
+                        letterview = game.letterbuttons(user, word, False, False, True,0,0, self, False)
                         usermessage = await user.send(f"<@{user.id}>! Please choose a consonant or a vowel, you have 20 seconds to choose. Your word is:", view = letterview)
-                        self.waiterlet = asyncio.Event()
-                        done = asyncio.create_task(self.waiterlet.wait())
+                        self.waiterlet[user] = asyncio.Event()
+                        done = asyncio.create_task(self.waiterlet[user].wait())
                         letterview.setmessage(usermessage)
-                        await self.waiterlet.wait()
+                        await self.waiterlet[user].wait()
+                await asyncio.sleep(.1) #buffer
                 self.round_complete.set()
 
 
@@ -323,7 +332,7 @@ class game():
                 await user.send(message)
         else:
         
-            message = "The winner is " + lwinnerlist[0].display_name + " with the guess of " + str(self.scoreboards[user].getletterguesslength()) + ". They earn " +  str(self.scoreboards[user].getletterguesslength()) + " points."
+            message = "The winner is " + lwinnerlist[0].display_name + " with the guess of " + str(self.scoreboards[user].getletterguess()) + ". They earn " +  str(self.scoreboards[user].getletterguesslength()) + " points."
 
             for user in self.getscoreboards():
                 await user.send(message)
@@ -339,7 +348,13 @@ class game():
                 lettermessage = lettermessage + ", " + guesslist[i]
         for user in self.getscoreboards():
             await user.send(lettermessage)
-        self.waiterlet.set()
+        self.waiterlet[self.current].set()
+
+
+    async def checkallnum(self, user):
+        self.received[user] = True
+        if all(self.received.values()): 
+            self.all_submit.set()
 
 
     async def numbernum(self, game):
@@ -347,6 +362,7 @@ class game():
             await game.numbers(i+ 1, game.roster, game)
 
     async def numbers(self, round, roster, parent):
+
         class rootnum():
             def __init__(self, num, index):
                 self.val = num
@@ -383,7 +399,6 @@ class game():
             self.all_submit = asyncio.Event()
             self.waiter = asyncio.create_task(self.all_submit.wait())  
             target = random.randrange(1,1000)
-
             for user in roster:
 
                 rootlist = []
@@ -391,6 +406,7 @@ class game():
                     newnum = rootnum(numlist[i], i)
                     rootlist.append(newnum)
                 await user.send(f"Alright! The numbers are {numlist[0]}, {numlist[1]}, {numlist[2]}, {numlist[3]}, {numlist[4]}, and {numlist[5]}. You have 40 seconds. The target number is **{target}**. Once you submit an answer, you cannot change it.", view = parent.numbuttons(user, rootlist, target, [],[], time.time() + 40, [], parent, [-.5, -.5, -.5, -.5],False))
+
             timer1 = asyncio.create_task(asyncio.sleep(40))
             self.consubmit = asyncio.Event()
             self.waiter = asyncio.create_task(self.all_submit.wait())  
@@ -448,18 +464,6 @@ class game():
     
             
 
-
-
-
-
-    def checkall(self, user):
-        self.received[user] = True
-        if all(self.received.values()): 
-            self.all_submit.set()
-
-
-
-
     def numslist(self, num):
         def randchooser(list):
             item = list[random.randrange(0,len(list))]
@@ -482,6 +486,7 @@ class game():
 
     class numbuttons(discord.ui.View):
         class equation():
+            
             def __init__(self, num1, operation, num2):
                 class num():
                     def __init__(self, ind, val ):
@@ -505,7 +510,7 @@ class game():
                 elif operation == 3:
                     self.result.val = num1.val * num2.val
                 elif operation == 4:
-                    self.result.val = num1.val / num2.val
+                    self.result.val = int(num1.val / num2.va)
             def toString(self):
                 return f"{self.num1.val} {self.ops[self.operation]} {self.num2.val} = {self.result.val}"
             def toList(self):
@@ -530,6 +535,10 @@ class game():
         
 
         def __init__(self, user, nums, target, memo, current, timer, indices, parent, mems, submit):
+            async def timere(time):
+                await asyncio.sleep(time)
+                if self.submit == False:
+                    await self.user.send("10 seconds left...")
             super().__init__()
 
             self.user = user
@@ -550,10 +559,11 @@ class game():
             self.button5_callback.label = nums[4].val
             self.button6_callback.label = nums[5].val
             self.refreshnums()
+            asyncio.create_task(timere(30))
 
         async def submitter(self):
                 self.submit = True
-                self.parent.checkall(self.user)
+                await self.parent.checkallnum(self.user)
                 self.parent.scoreboards[self.user].setnumberguess(self.current[0].val)
                 self.refreshnums()
                 await self.message.edit(view = self)
@@ -692,14 +702,15 @@ class game():
                     self.mem4_callback.disabled = False  
 
             elif len(self.current) == 2 and self.current[1] == 4: #entering current num
-                self.button1_callback.disabled = self.nums[0].index in self.indices and self.current[0].val % self.nums[0].val == 0
-                self.button2_callback.disabled = self.nums[1].index in self.indices and self.current[0].val % self.nums[1].val == 0
-                self.button3_callback.disabled = self.nums[2].index in self.indices and self.current[0].val % self.nums[2].val == 0
-                self.button4_callback.disabled = self.nums[3].index in self.indices and self.current[0].val % self.nums[3].val == 0
-                self.button5_callback.disabled = self.nums[4].index in self.indices and self.current[0].val % self.nums[4].val == 0
-                self.button6_callback.disabled = self.nums[5].index in self.indices and self.current[0].val % self.nums[5].val == 0
+                self.button1_callback.disabled = (self.nums[0].index in self.indices or self.current[0].val % self.nums[0].val != 0)
+                self.button2_callback.disabled = (self.nums[1].index in self.indices or self.current[0].val % self.nums[1].val != 0)
+                self.button3_callback.disabled = (self.nums[2].index in self.indices or self.current[0].val % self.nums[2].val != 0)
+                self.button4_callback.disabled = (self.nums[3].index in self.indices or self.current[0].val % self.nums[3].val != 0)
+                self.button5_callback.disabled = (self.nums[4].index in self.indices or self.current[0].val % self.nums[4].val != 0)
+                self.button6_callback.disabled = (self.nums[5].index in self.indices or self.current[0].val % self.nums[5].val != 0)
                 self.add_callback.disabled = True
                 self.subtract_callback.disabled = True
+                self.divide_callback.disabled = True
                 self.multiply_callback.disabled = True
                 self.delete_callback.disabled = False
                 self.submit_callback.disabled = True
@@ -959,18 +970,18 @@ class game():
         stdout, stderr = process.communicate()
         output = stdout.decode('utf-8')
         self.cor = 0
-
         outputs = output.split(",")
         conundrum = outputs[0]
         ans = outputs[1].strip()
         tasklist = []
         self.conall_submit = asyncio.Event()
         self.conwaiter = asyncio.create_task(self.conall_submit.wait())  
+        self.submitcheck = {user : False for user in self.roster}
         for user in self.roster:
             await user.send(f'The conundrum is {conundrum}.')
             tasklist.append (game.gatheranswers(self, user, ans),)
         await asyncio.gather(*tasklist)
-        timer1 = asyncio.create_task(asyncio.sleep(40))
+        timer1 = asyncio.create_task(asyncio.sleep(30))
         done, pending = await asyncio.wait([self.conwaiter, timer1],return_when=asyncio.FIRST_COMPLETED,)
         if self.cor != 0:
             for user in self.roster:
@@ -979,6 +990,10 @@ class game():
         else:
             for user in self.roster:
                 await user.send(f"There are no winners! The answer was {ans}.")
+    async def checkall(self, user):
+        self.submitcheck[user] = True
+        if all(self.submitcheck.values()):
+            self.conall_submit.set()
             
 
 
@@ -991,13 +1006,13 @@ class game():
             cont = msg.content[2:]
         if msg.content.startswith("buzz"):
             cont = msg.content[4:]
-        print(cont.strip().upper())
         if cont.strip().upper() == ans:
             self.cor = user
-
             self.conall_submit.set()
+        
         else:
             await user.send("Invalid guess! Your turn has ended!")
+            await self.checkall(user)
 
     async def finish(self):
         winnerlist = []
@@ -1033,7 +1048,7 @@ class game():
             message = message + f"""{username}: {score} points \n"""
         for user in self.roster:
             await user.send(message)
-        global activechannels
+        global activechannelsf
         del activechannels[self.chan.channel]
 
 
@@ -1079,13 +1094,13 @@ async def start(ctx: discord.ApplicationContext):
     async def initializegame():
         newgame = game(roster, ctx)
         activechannels[ctx.channel] = newgame
-        for user in roster:
-            await user.send(f"It's time for the letters round. A word must have at least 3 vowels and 4 consonants. A word has a maximum of 9 letters.")
+        #for user in roster:
+         #   await user.send(f"It's time for the letters round. A word must have at least 3 vowels and 4 consonants. A word has a maximum of 9 letters.")
 
-        await newgame.roundnum(newgame)
-        for user in roster:
-            await user.send("It's time for the numbers round. Please choose how many large numbers you want. The remaining will be small numbers")
-        await newgame.numbernum(newgame)
+        #await newgame.roundnum(newgame)
+        #for user in roster:
+         #   await user.send("It's time for the numbers round. Please choose how many large numbers you want. The remaining will be small numbers")
+        #await newgame.numbernum(newgame)
         for user in roster:
             await user.send("It's time for counundrum! Please type 'buzz' or 'bz' followed by your answer. You have one guess as to what the unscrambled 9-letter word is.")
         await newgame.conundrum(newgame)
